@@ -1,0 +1,13 @@
+# runtime state
+jobs.json
+
+# python
+__pycache__/
+*.pyc
+
+# downloads (never commit media)
+downloads/
+*.mp4
+*.mp3
+*.part
+*.ytdl
