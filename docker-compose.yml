@@ -11,9 +11,10 @@ services:
       - "8099:8099"
     volumes:
       - C:/Users/manig/Downloads/ytgrab:/downloads
-      - ytdl_state:/app
+      - ytdl_state:/state
     environment:
       - TZ=Asia/Kolkata
+      - YTDL_STATE=/state/jobs.json
 
 volumes:
   ytdl_state:

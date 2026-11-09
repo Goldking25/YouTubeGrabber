@@ -18,6 +18,7 @@ Only use for content you have the right to download. Not for piracy.
 import argparse
 import datetime
 import json
+import os
 import re
 import subprocess
 import sys
@@ -31,7 +32,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="YouTubeGrabber")
 
-STATE_FILE = Path(__file__).with_name("jobs.json")
+STATE_FILE = Path(os.environ.get("YTDL_STATE", str(Path(__file__).with_name("jobs.json"))))
 DEFAULT_OUT = Path.home() / "Downloads" / "ytgrab"
 OUTPUT_DIR = DEFAULT_OUT
 
@@ -40,6 +41,9 @@ MAX_CONCURRENT = 1  # how many downloads run at once; the rest wait in queue
 JOBS: dict[str, dict] = {}
 PROCS: dict[str, subprocess.Popen] = {}
 LOCK = threading.Lock()
+
+# Windows-only flag to hide child console windows; None elsewhere (Linux/macOS)
+PROC_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 PCT_RE = re.compile(r"(\d+(?:\.\d+)?)%")
 
@@ -155,7 +159,7 @@ def _start_proc(j: dict):
     proc = subprocess.Popen(
         build_cmd(j["url"], j["mode"], outdir, int(j.get("limit") or 0)),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        creationflags=subprocess.CREATE_NO_WINDOW,
+        creationflags=PROC_FLAGS,
     )
     PROCS[job_id] = proc
     j.update(status="downloading", error=None)

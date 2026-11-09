@@ -112,9 +112,15 @@ function go() {
   const url = $("url").value.trim();
   if (!url) return;
   fetch(`/api/start?url=${encodeURIComponent(url)}&mode=${$("mode").value}&out_dir=${encodeURIComponent($("outdir").value)}&limit=${encodeURIComponent($("limit").value||0)}`, {method: "POST"})
-    .then(r => r.json())
-    .then(d => { $("url").value = ""; poll(); })
-    .catch(e => alert("Failed to start: " + e));
+    .then(async r => {
+      if (!r.ok) {
+        const t = await r.text();
+        alert(`Server refused (HTTP ${r.status}): ${t.slice(0,200)}`);
+        return;
+      }
+      $("url").value = ""; poll();
+    })
+    .catch(e => alert("Could not reach the server: " + e));
 }
 
 function pause(id) { fetch(`/api/pause/${id}`, {method: "POST"}).then(poll); }
@@ -130,8 +136,8 @@ function removeJob(id) {
 
 async function poll() {
   try {
-    const s = await (await fetch("/api/status")).json();
-    jobs = s; render();
+    const r = await fetch("/api/status");
+    if (r.ok) { jobs = await r.json(); render(); }
   } catch {}
   setTimeout(poll, 800);
 }
