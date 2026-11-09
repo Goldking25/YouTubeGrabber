@@ -31,8 +31,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/youtubegrabber:latest
-            ghcr.io/${{ github.repository_owner }}/youtubegrabber:${{ github.ref_name }}
+            ghcr.io/goldking25/youtubegrabber:latest
+            ghcr.io/goldking25/youtubegrabber:${{ github.ref_name }}
           labels: |
             org.opencontainers.image.title=YouTubeGrabber
             org.opencontainers.image.description=Friendly YouTube downloader web UI (MP4/MP3, queue, pause/resume)
