@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>YouTubeGrabber</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: "Segoe UI", sans-serif; background: #0f1115; color: #e6e6e6;
+         max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { color: #ff4d4d; font-size: 1.5rem; } h1 small { color: #888; font-size: .8rem; }
+  .row { display: flex; gap: .5rem; margin: 1rem 0; }
+  input[type=text] { flex: 1; padding: .6rem .8rem; border-radius: 8px; border: 1px solid #333;
+                     background: #191c23; color: #eee; font-size: 1rem; }
+  select { padding: .6rem; border-radius: 8px; border: 1px solid #333; background: #191c23; color: #eee; }
+  button { padding: .6rem 1.2rem; border: none; border-radius: 8px; background: #ff4d4d;
+           color: #fff; font-weight: 600; cursor: pointer; }
+  button.mini { padding: .25rem .6rem; font-size: .8rem; margin-right: .3rem; }
+  button.resume { background: #2f8f4e; }
+  button.stopbtn { background: #7A7f8c; }
+  button.delbtn { background: transparent; border: 1px solid #333; }
+  .tabs button { background: #191c23; color: #9aa; border: 1px solid #2a2e36; padding: .35rem .9rem; }
+  .tabs button.on { background: #ff4d4d; color: #fff; border-color: #ff4d4d; }
+  button:hover { background: #ff6666; }
+  .job { background: #191c23; border: 1px solid #2a2e36; border-radius: 10px;
+         padding: .7rem 1rem; margin: .5rem 0; }
+  .bar { height: 8px; background: #2a2e36; border-radius: 4px; overflow: hidden; margin-top: .4rem; }
+  .bar > div { height: 100%; background: #4dc26b; width: 0; transition: width .3s; }
+  .meta { color: #9aa; font-size: .82rem; }
+  .error { color: #ff6b6b; font-size: .85rem; }
+  .done { color: #4dc26b; font-weight: 600; }
+  footer { margin-top: 2rem; color: #556; font-size: .75rem; }
+</style>
+</head>
+<body>
+<h1>YouTubeGrabber <small>audio + video downloader (personal offline use)</small></h1>
+
+<div class="row">
+  <input type="text" id="url" placeholder="Paste a YouTube video or playlist URL..."
+         onkeydown="if(event.key==='Enter') go()">
+  <select id="mode">
+    <option value="video">Video (MP4, best quality)</option>
+    <option value="audio">Audio only (MP3)</option>
+  </select>
+  <button onclick="go()">Download</button>
+</div>
+
+<div class="row">
+  <input type="text" id="outdir" placeholder="Download folder (blank = default)">
+  <input type="text" id="limit" style="max-width:180px" placeholder="Playlist limit (e.g. 20)"
+         onkeydown="if(event.key==='Enter') go()">
+</div>
+
+<div class="row tabs" id="tabs"></div>
+
+<div id="jobs"></div>
+
+<footer>Files are saved to the folder you passed via --out. Respect copyright: download only content you have the right to.</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let jobs = {};
+let filter = "all";
+
+const FILTERS = {
+  all: j => true,
+  active: j => ["downloading","merging","stopping"].includes(j.status),
+  queued: j => j.status === "queued",
+  done: j => j.status === "done",
+};
+
+function renderTabs() {
+  const counts = {all: 0, active: 0, queued: 0, done: 0};
+  Object.values(jobs).forEach(j => {
+    if (counts.all !== undefined) counts.all++;
+    for (const k of ["active","queued","done"]) if (FILTERS[k](j)) counts[k]++;
+  });
+  $("tabs").innerHTML = [["all","All"],["active","Downloading"],["queued","Queued"],["done","Completed"]]
+    .map(([k,label]) => `<button class='${filter===k?"on":""}' onclick="setFilter('${k}')">${label} (${counts[k]})</button>`).join("");
+}
+function setFilter(k){ filter = k; render(); }
+
+function render() {
+  renderTabs();
+  const box = $("jobs");
+  const ids = Object.keys(jobs).filter(id => FILTERS[filter](jobs[id]));
+  if (!ids.length) { box.innerHTML = "<p class='meta'>Nothing here yet. Paste a URL above.</p>"; return; }
+  box.innerHTML = ids.map(id => {
+    const j = jobs[id];
+    const pct = j.percent ?? 0;
+    const st = j.status === "done" ? "<span class='done'>✔ Done</span>"
+      : j.status === "error" ? "<span class='error'>✖ " + (j.error||"failed") + "</span>"
+      : j.status === "queued" ? "🕰 Waiting in queue…"
+      : j.status === "cancelled" ? "✖ Stopped (cancelled)"
+      : j.status === "interrupted" ? "⚠ interrupted"
+      : j.status === "merging" ? "⏳ merging/encoding…"
+      : "⬇ downloading";
+    return `<div class='job'><b>${j.title}</b> <span class='meta'>[${id}]</span><br>
+      ${st} — ${pct}% ${j.item ? "<span class='meta'>[song "+j.item+"]</span>" : ""} <span class='meta'>${j.speed && j.status==='downloading' ? "@ "+j.speed+" · eta "+j.eta : ""}</span>
+      <div class='meta'>→ ${j.outdir || ""}</div>
+      ${(j.status==='downloading'||j.status==='merging') ? `<button class='mini' onclick="pause('${id}')">⏸ Pause</button>` : ""}
+      ${(j.status==='downloading'||j.status==='merging'||j.status==='queued') ? `<button class='mini stopbtn' onclick="stopJob('${id}')">✖ Stop</button>` : ""}
+      ${(j.status==='paused'||j.status==='interrupted'||j.status==='cancelled') ? `<button class='mini resume' onclick="resume('${id}')">▶ Resume</button>` : ""}
+      ${(!["downloading","merging"].includes(j.status)) ? `<button class='mini delbtn' onclick="removeJob('${id}')">🗑</button>` : ""}
+      ${(j.status==='queued') ? `<button class='mini resume' onclick="resume('${id}')">▶ Start now</button>` : ""}
+      ${j.status==='interrupted' ? "<span class='meta'> ⚠ interrupted by shutdown — can resume</span>" : ""}
+      ${j.status==='queued' ? "<span class='meta'> Will start automatically when the current download finishes.</span>" : ""}
+      <div class='bar'><div style='width:${pct}%'></div></div></div>`;
+  }).join("");
+}
+
+function go() {
+  const url = $("url").value.trim();
+  if (!url) return;
+  fetch(`/api/start?url=${encodeURIComponent(url)}&mode=${$("mode").value}&out_dir=${encodeURIComponent($("outdir").value)}&limit=${encodeURIComponent($("limit").value||0)}`, {method: "POST"})
+    .then(r => r.json())
+    .then(d => { $("url").value = ""; poll(); })
+    .catch(e => alert("Failed to start: " + e));
+}
+
+function pause(id) { fetch(`/api/pause/${id}`, {method: "POST"}).then(poll); }
+function resume(id) { fetch(`/api/resume/${id}`, {method: "POST"}).then(poll); }
+function stopJob(id) {
+  if (!confirm("Stop this download and delete its partial files?")) return;
+  fetch(`/api/stop/${id}`, {method: "POST"}).then(poll);
+}
+function removeJob(id) {
+  if (!confirm("Remove this job from the list? (Downloaded files are NOT deleted.)")) return;
+  fetch(`/api/remove/${id}`, {method: "POST"}).then(poll);
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    jobs = s; render();
+  } catch {}
+  setTimeout(poll, 800);
+}
+poll();
+</script>
+</body>
+</html>

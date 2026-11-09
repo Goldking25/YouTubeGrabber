@@ -1,0 +1,19 @@
+# sparse run:   docker compose up -d --build
+# then:         http://localhost:8099
+# downloads land in the folder you set for -v (default ./downloads)
+services:
+  ytdl:
+    build: .
+    image: youtubegrabber:latest
+    container_name: ytdl
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    volumes:
+      - C:/Users/manig/Downloads/ytgrab:/downloads
+      - ytdl_state:/app
+    environment:
+      - TZ=Asia/Kolkata
+
+volumes:
+  ytdl_state:
