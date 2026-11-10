@@ -84,8 +84,12 @@ def build_cmd(url: str, mode: str, outdir: Path, limit: int = 0) -> list[str]:
 def monitor(job_id: str, proc: subprocess.Popen, outdir: Path):
     j = JOBS[job_id]
     merging = False
+    last_error = ""
     for raw in proc.stdout:
         line = raw.decode("utf-8", "replace").strip()
+        if line.startswith("ERROR") or line.startswith("WARNING"):
+            if line.startswith("ERROR"):
+                last_error = line
         m = PCT_RE.search(line)
         if m and ("download" in line.lower() or "%" in line):
             with LOCK:
@@ -124,7 +128,7 @@ def monitor(job_id: str, proc: subprocess.Popen, outdir: Path):
             j["percent"] = 100
         else:
             j["status"] = "error"
-            j["error"] = f"yt-dlp exited with code {proc.returncode}"
+            j["error"] = last_error or f"yt-dlp exited with code {proc.returncode}"
     PROCS.pop(job_id, None)
     save_jobs()
     dispatch()  # start the next queued job, if any
